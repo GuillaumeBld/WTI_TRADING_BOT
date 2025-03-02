@@ -1,0 +1,33 @@
+# Core Python libraries
+numpy
+pandas
+matplotlib
+scikit-learn
+seaborn
+
+# Financial data libraries
+yfinance
+alpha_vantage
+ccxt
+
+# Machine learning libraries
+tensorflow
+torch
+lightgbm
+xgboost
+finrl
+
+# Backtesting and trading libraries
+backtrader
+bt
+zipline
+TA-Lib
+
+# Web framework
+Flask
+FastAPI
+
+# Messaging libraries for alerts
+telepot
+discord.py
+slack_sdk
