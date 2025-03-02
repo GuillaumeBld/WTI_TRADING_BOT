@@ -1,239 +1,429 @@
 """
-Backtesting Module
+Backtesting Module - Demo Version
 
-This script implements a backtesting engine to evaluate trading strategies
-on historical data.
+This is a simplified version of the backtesting module that evaluates
+trading strategies on historical data without external dependencies.
 """
 
 import os
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import csv
+import math
 from datetime import datetime
-from data_fetch import fetch_historical_data
-from strategy import TradingStrategy
 
-class Backtest:
+def load_price_data(filepath):
     """
-    Backtesting class to evaluate trading strategies
+    Load price data from a CSV file
+    
+    Args:
+        filepath (str): Path to the CSV file
+        
+    Returns:
+        list: List of dictionaries with the data
     """
+    data = []
+    try:
+        with open(filepath, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Convert string values to appropriate types
+                processed_row = {
+                    'Date': row['Date'],
+                    'Open': float(row['Open']),
+                    'High': float(row['High']),
+                    'Low': float(row['Low']),
+                    'Close': float(row['Close']),
+                    'Volume': int(row['Volume'])
+                }
+                data.append(processed_row)
+        print(f"Loaded {len(data)} price records from {filepath}")
+        return data
+    except Exception as e:
+        print(f"Error loading price data from {filepath}: {e}")
+        return []
+
+def load_signals(filepath):
+    """
+    Load trading signals from a CSV file
     
-    def __init__(self, initial_capital=100000.0):
-        """
-        Initialize the backtester
+    Args:
+        filepath (str): Path to the CSV file
         
-        Args:
-            initial_capital (float): Initial capital for the backtest
-        """
-        self.initial_capital = initial_capital
-        self.results = None
+    Returns:
+        list: List of dictionaries with the signals
+    """
+    signals = []
+    try:
+        with open(filepath, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Convert string values to appropriate types
+                processed_row = {
+                    'Date': row['Date'],
+                    'Price': float(row['Price']),
+                    'Signal': int(float(row['Signal'])),  # Convert to int
+                    'Confidence': float(row['Confidence'])
+                }
+                signals.append(processed_row)
+        print(f"Loaded {len(signals)} trading signals from {filepath}")
+        return signals
+    except Exception as e:
+        print(f"Error loading signals from {filepath}: {e}")
+        return []
+
+def run_backtest(price_data, signals, initial_capital=100000.0, commission=0.001):
+    """
+    Run a backtest of the trading strategy
     
-    def run(self, data, signals, commission=0.001):
-        """
-        Run the backtest
+    Args:
+        price_data (list): List of dictionaries with price data
+        signals (list): List of dictionaries with trading signals
+        initial_capital (float): Initial capital for the backtest
+        commission (float): Commission rate per trade
         
-        Args:
-            data (pandas.DataFrame): DataFrame with price data
-            signals (pandas.DataFrame): DataFrame with trading signals
-            commission (float): Commission rate per trade
-            
-        Returns:
-            pandas.DataFrame: DataFrame with backtest results
-        """
-        # Make sure data and signals have the same index
-        common_index = data.index.intersection(signals.index)
-        data = data.loc[common_index]
-        signals = signals.loc[common_index]
+    Returns:
+        list: List of dictionaries with backtest results
+    """
+    # Create a date-indexed dictionary of prices for quick lookup
+    price_dict = {item['Date']: item for item in price_data}
+    
+    # Initialize backtest results
+    results = []
+    
+    # Initialize portfolio state
+    portfolio = {
+        'cash': initial_capital,
+        'position': 0,
+        'holdings': 0.0,
+        'portfolio_value': initial_capital,
+        'trades': 0,
+        'wins': 0,
+        'losses': 0
+    }
+    
+    # Previous portfolio value for calculating returns
+    prev_portfolio_value = initial_capital
+    
+    # Process each signal
+    for i, signal in enumerate(signals):
+        date = signal['Date']
+        signal_type = signal['Signal']  # 1: Buy, -1: Sell, 0: Hold
         
-        # Create a DataFrame for the backtest results
-        results = pd.DataFrame(index=signals.index)
-        results['Price'] = data['Close']
-        results['Signal'] = signals['Signal']
+        # Get price data for this date
+        if date not in price_dict:
+            continue
         
-        # Calculate positions (1 for long, -1 for short, 0 for no position)
-        results['Position'] = results['Signal'].diff()
+        price_info = price_dict[date]
+        close_price = price_info['Close']
         
-        # Calculate holdings and cash
-        results['Holdings'] = results['Signal'] * results['Price']
-        results['Cash'] = self.initial_capital - (results['Signal'].diff() * results['Price']).cumsum()
+        # Calculate position change
+        position_change = 0
+        if i > 0:
+            position_change = signal_type - signals[i-1]['Signal']
+        else:
+            position_change = signal_type
+        
+        # Calculate trade cost (commission)
+        trade_cost = 0.0
+        if position_change != 0:
+            trade_cost = abs(position_change) * close_price * commission
+            portfolio['trades'] += 1
+        
+        # Update portfolio based on position change
+        if position_change > 0:  # Buying
+            shares_to_buy = (portfolio['cash'] * 0.95) / close_price  # Use 95% of cash
+            cost = shares_to_buy * close_price
+            portfolio['cash'] -= cost
+            portfolio['position'] = 1
+            portfolio['holdings'] = shares_to_buy * close_price
+        elif position_change < 0:  # Selling
+            if portfolio['position'] > 0:  # If we have a position
+                portfolio['cash'] += portfolio['holdings']
+                
+                # Record win/loss
+                if portfolio['holdings'] > portfolio['portfolio_value'] - portfolio['cash']:
+                    portfolio['wins'] += 1
+                else:
+                    portfolio['losses'] += 1
+                
+                portfolio['position'] = 0
+                portfolio['holdings'] = 0.0
+        
+        # Deduct commission
+        portfolio['cash'] -= trade_cost
+        
+        # Update holdings value based on current price
+        if portfolio['position'] > 0:
+            portfolio['holdings'] = (portfolio['holdings'] / price_info['Close']) * close_price
         
         # Calculate portfolio value
-        results['Portfolio'] = results['Holdings'] + results['Cash']
+        portfolio_value = portfolio['cash'] + portfolio['holdings']
         
-        # Calculate returns
-        results['Returns'] = results['Portfolio'].pct_change()
+        # Calculate return
+        daily_return = (portfolio_value / prev_portfolio_value) - 1 if prev_portfolio_value > 0 else 0
+        prev_portfolio_value = portfolio_value
         
-        # Calculate commissions
-        results['Commission'] = np.abs(results['Position']) * results['Price'] * commission
-        results['Portfolio'] = results['Portfolio'] - results['Commission'].cumsum()
+        # Update portfolio value
+        portfolio['portfolio_value'] = portfolio_value
         
-        self.results = results
-        
-        return results
+        # Add to results
+        results.append({
+            'Date': date,
+            'Price': close_price,
+            'Signal': signal_type,
+            'Position': portfolio['position'],
+            'Cash': portfolio['cash'],
+            'Holdings': portfolio['holdings'],
+            'Portfolio_Value': portfolio['portfolio_value'],
+            'Daily_Return': daily_return,
+            'Trade_Cost': trade_cost
+        })
     
-    def calculate_metrics(self):
-        """
-        Calculate performance metrics
-        
-        Returns:
-            dict: Dictionary with performance metrics
-        """
-        if self.results is None:
-            print("No backtest results available")
-            return None
-        
-        # Calculate metrics
-        total_return = (self.results['Portfolio'].iloc[-1] / self.initial_capital) - 1
-        annual_return = total_return / (len(self.results) / 252)
-        
-        # Calculate Sharpe ratio
-        risk_free_rate = 0.02  # Assuming 2% risk-free rate
-        sharpe_ratio = (annual_return - risk_free_rate) / (self.results['Returns'].std() * np.sqrt(252))
-        
-        # Calculate maximum drawdown
-        portfolio_values = self.results['Portfolio']
-        cumulative_max = portfolio_values.cummax()
-        drawdown = (portfolio_values - cumulative_max) / cumulative_max
-        max_drawdown = drawdown.min()
-        
-        # Calculate win rate
-        trades = self.results['Position'].dropna()
-        trades = trades[trades != 0]
-        
-        if len(trades) > 0:
-            win_count = sum(1 for i in range(len(trades)) if trades.iloc[i] > 0 and self.results['Returns'].iloc[i] > 0)
-            win_rate = win_count / len(trades)
-        else:
-            win_rate = 0
-        
-        metrics = {
-            'Total Return': total_return,
-            'Annual Return': annual_return,
-            'Sharpe Ratio': sharpe_ratio,
-            'Max Drawdown': max_drawdown,
-            'Win Rate': win_rate,
-            'Number of Trades': len(trades)
-        }
-        
-        return metrics
+    return results, portfolio
+
+def calculate_metrics(results, portfolio, initial_capital):
+    """
+    Calculate performance metrics from backtest results
     
-    def plot_results(self, save_path=None):
-        """
-        Plot backtest results
+    Args:
+        results (list): List of dictionaries with backtest results
+        portfolio (dict): Final portfolio state
+        initial_capital (float): Initial capital for the backtest
         
-        Args:
-            save_path (str): Path to save the plot
+    Returns:
+        dict: Dictionary with performance metrics
+    """
+    # Calculate total return
+    final_value = results[-1]['Portfolio_Value']
+    total_return = (final_value / initial_capital) - 1
+    
+    # Calculate annualized return (assuming 252 trading days per year)
+    days = len(results)
+    annual_return = total_return * (252 / days)
+    
+    # Calculate Sharpe ratio (assuming 2% risk-free rate)
+    risk_free_rate = 0.02
+    daily_returns = [result['Daily_Return'] for result in results]
+    daily_returns_std = calculate_std(daily_returns)
+    sharpe_ratio = (annual_return - risk_free_rate) / (daily_returns_std * math.sqrt(252)) if daily_returns_std > 0 else 0
+    
+    # Calculate maximum drawdown
+    max_drawdown = calculate_max_drawdown(results)
+    
+    # Calculate win rate
+    win_rate = portfolio['wins'] / portfolio['trades'] if portfolio['trades'] > 0 else 0
+    
+    return {
+        'Total Return': total_return,
+        'Annual Return': annual_return,
+        'Sharpe Ratio': sharpe_ratio,
+        'Max Drawdown': max_drawdown,
+        'Win Rate': win_rate,
+        'Number of Trades': portfolio['trades']
+    }
+
+def calculate_std(values):
+    """
+    Calculate standard deviation
+    
+    Args:
+        values (list): List of values
+        
+    Returns:
+        float: Standard deviation
+    """
+    if not values:
+        return 0
+    
+    mean = sum(values) / len(values)
+    variance = sum((x - mean) ** 2 for x in values) / len(values)
+    return math.sqrt(variance)
+
+def calculate_max_drawdown(results):
+    """
+    Calculate maximum drawdown
+    
+    Args:
+        results (list): List of dictionaries with backtest results
+        
+    Returns:
+        float: Maximum drawdown
+    """
+    max_value = 0
+    max_drawdown = 0
+    
+    for result in results:
+        value = result['Portfolio_Value']
+        if value > max_value:
+            max_value = value
+        
+        drawdown = (max_value - value) / max_value if max_value > 0 else 0
+        max_drawdown = max(max_drawdown, drawdown)
+    
+    return max_drawdown
+
+def save_results_to_csv(results, filepath):
+    """
+    Save backtest results to a CSV file
+    
+    Args:
+        results (list): List of dictionaries with backtest results
+        filepath (str): Path to save the CSV file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        with open(filepath, 'w', newline='') as f:
+            fieldnames = list(results[0].keys())
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
             
-        Returns:
-            matplotlib.figure.Figure: The figure object
-        """
-        if self.results is None:
-            print("No backtest results available")
-            return None
+            for result in results:
+                writer.writerow(result)
         
-        # Create figure and subplots
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        print(f"Backtest results saved to {filepath}")
+        return True
+    except Exception as e:
+        print(f"Error saving results to {filepath}: {e}")
+        return False
+
+def generate_text_chart(results, width=80, height=20):
+    """
+    Generate a simple ASCII chart of portfolio value
+    
+    Args:
+        results (list): List of dictionaries with backtest results
+        width (int): Width of the chart
+        height (int): Height of the chart
         
-        # Plot portfolio value
-        ax1.plot(self.results.index, self.results['Portfolio'])
-        ax1.set_ylabel('Portfolio Value ($)')
-        ax1.set_title('Backtest Results')
-        ax1.grid(True)
+    Returns:
+        str: ASCII chart
+    """
+    # Extract portfolio values
+    values = [result['Portfolio_Value'] for result in results]
+    
+    # Find min and max values
+    min_value = min(values)
+    max_value = max(values)
+    value_range = max_value - min_value
+    
+    # Create chart
+    chart = []
+    
+    # Add header
+    chart.append("Portfolio Value Chart")
+    chart.append(f"Min: ${min_value:.2f}, Max: ${max_value:.2f}, Range: ${value_range:.2f}")
+    chart.append("-" * width)
+    
+    # Create chart rows
+    for i in range(height):
+        row = []
+        level = max_value - (i * value_range / height)
         
-        # Plot price and signals
-        ax2.plot(self.results.index, self.results['Price'])
+        # Add y-axis label
+        row.append(f"${level:.2f} |")
         
-        # Plot buy signals
-        buy_signals = self.results[self.results['Position'] > 0]
-        ax2.scatter(buy_signals.index, buy_signals['Price'], marker='^', color='g', alpha=0.7)
+        # Add chart points
+        for j in range(width - 10):  # Subtract 10 for the y-axis label
+            if j < len(values):
+                index = int(j * len(values) / (width - 10))
+                value = values[index]
+                
+                if value >= level - (value_range / height / 2) and value <= level + (value_range / height / 2):
+                    row.append("*")
+                else:
+                    row.append(" ")
         
-        # Plot sell signals
-        sell_signals = self.results[self.results['Position'] < 0]
-        ax2.scatter(sell_signals.index, sell_signals['Price'], marker='v', color='r', alpha=0.7)
-        
-        ax2.set_ylabel('Price ($)')
-        ax2.grid(True)
-        
-        # Plot drawdown
-        portfolio_values = self.results['Portfolio']
-        cumulative_max = portfolio_values.cummax()
-        drawdown = (portfolio_values - cumulative_max) / cumulative_max
-        
-        ax3.fill_between(self.results.index, drawdown, 0, color='r', alpha=0.3)
-        ax3.set_ylabel('Drawdown')
-        ax3.set_xlabel('Date')
-        ax3.grid(True)
-        
-        plt.tight_layout()
-        
-        # Save plot if path is provided
-        if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            plt.savefig(save_path)
-            print(f"Plot saved to {save_path}")
-        
-        return fig
+        chart.append("".join(row))
+    
+    # Add x-axis
+    chart.append("-" * width)
+    
+    # Add x-axis labels
+    x_axis = "Time"
+    x_axis = x_axis.center(width)
+    chart.append(x_axis)
+    
+    return "\n".join(chart)
 
 def main():
     """
     Main function to run a backtest
     """
-    import argparse
+    print("WTI Crude Oil Trading System - Backtesting")
+    print("==========================================")
     
-    parser = argparse.ArgumentParser(description='Run a backtest')
-    parser.add_argument('--period', type=str, default='1y', help='Period to backtest (e.g., 1y, 2y, 5y)')
-    parser.add_argument('--capital', type=float, default=100000.0, help='Initial capital')
-    parser.add_argument('--commission', type=float, default=0.001, help='Commission rate')
-    parser.add_argument('--save', action='store_true', help='Save results and plot')
-    args = parser.parse_args()
+    # Load price data
+    price_data_path = "../data/crude_oil_data.csv"
+    price_data = load_price_data(price_data_path)
     
-    # Fetch data
-    print(f"Fetching data for period: {args.period}")
-    data = fetch_historical_data(period=args.period)
-    
-    if data is None:
-        print("Failed to fetch data")
+    if not price_data:
+        print("No price data available. Please run data_fetch.py first.")
         return
     
-    # Create strategy and generate signals
-    print("Generating trading signals...")
-    strategy = TradingStrategy()
-    strategy.load_model()
-    signals = strategy.generate_signals(data)
+    # Ask user which signals to use
+    print("\nWhich trading signals would you like to backtest?")
+    print("1. Rule-based signals (../data/trading_signals.csv)")
+    print("2. Machine learning signals (../data/trading_signals_ml.csv)")
     
-    if signals is None:
-        print("Failed to generate signals")
+    choice = input("Enter your choice (1 or 2): ")
+    
+    if choice == "1":
+        signals_path = "../data/trading_signals.csv"
+        strategy_name = "Rule-based"
+    elif choice == "2":
+        signals_path = "../data/trading_signals_ml.csv"
+        strategy_name = "Machine Learning"
+    else:
+        print("Invalid choice. Using ML signals by default.")
+        signals_path = "../data/trading_signals_ml.csv"
+        strategy_name = "Machine Learning"
+    
+    # Load trading signals
+    signals = load_signals(signals_path)
+    
+    if not signals:
+        print(f"No trading signals available at {signals_path}. Please run strategy.py first.")
         return
+    
+    # Set backtest parameters
+    initial_capital = 100000.0
+    commission = 0.001
+    
+    print(f"Running backtest for {strategy_name} strategy with initial capital: ${initial_capital:.2f} and commission rate: {commission:.3f}")
     
     # Run backtest
-    print("Running backtest...")
-    backtest = Backtest(initial_capital=args.capital)
-    results = backtest.run(data, signals, commission=args.commission)
+    results, portfolio = run_backtest(price_data, signals, initial_capital, commission)
     
-    # Calculate and print metrics
-    metrics = backtest.calculate_metrics()
+    if not results:
+        print("Failed to run backtest.")
+        return
     
-    if metrics:
-        print("\nBacktest Results:")
-        for key, value in metrics.items():
-            print(f"{key}: {value:.4f}")
+    # Calculate metrics
+    metrics = calculate_metrics(results, portfolio, initial_capital)
     
-    # Plot results
-    if args.save:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_path = f"../results/backtest_results_{timestamp}.csv"
-        plot_path = f"../results/backtest_plot_{timestamp}.png"
-        
-        # Save results
-        os.makedirs(os.path.dirname(results_path), exist_ok=True)
-        results.to_csv(results_path)
-        print(f"Results saved to {results_path}")
-        
-        # Save plot
-        backtest.plot_results(save_path=plot_path)
-    else:
-        backtest.plot_results()
-        plt.show()
+    # Print results
+    print("\nBacktest Results:")
+    print(f"Strategy: {strategy_name}")
+    print(f"Initial Capital: ${initial_capital:.2f}")
+    print(f"Final Portfolio Value: ${results[-1]['Portfolio_Value']:.2f}")
+    
+    print("\nPerformance Metrics:")
+    for key, value in metrics.items():
+        print(f"{key}: {value:.4f}")
+    
+    # Generate and print chart
+    chart = generate_text_chart(results)
+    print("\n" + chart)
+    
+    # Save results
+    os.makedirs("../results", exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = f"../results/backtest_{strategy_name.lower().replace(' ', '_')}_{timestamp}.csv"
+    save_results_to_csv(results, results_path)
+    
+    print("\nBacktesting complete!")
+    print("You can now proceed with trade execution.")
 
 if __name__ == "__main__":
     main()

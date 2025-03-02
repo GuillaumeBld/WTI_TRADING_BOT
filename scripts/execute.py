@@ -1,252 +1,151 @@
 """
-Trade Execution Module
+Trade Execution Module - Demo Version
 
-This script generates trade signals and sends them to Telegram.
+This is a simplified version of the trade execution module that sends
+trading signals to a simulated Telegram bot.
 """
 
 import os
-import time
+import csv
 import json
-import logging
-import pandas as pd
 from datetime import datetime
-import telepot
-from data_fetch import fetch_historical_data
-from strategy import TradingStrategy
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("../logs/execute.log"),
-        logging.StreamHandler()
-    ]
-)
-
-logger = logging.getLogger(__name__)
-
-class TelegramTradeExecutor:
+def load_signals(filepath):
     """
-    Class to generate trade signals and send them to Telegram
+    Load trading signals from a CSV file
+    
+    Args:
+        filepath (str): Path to the CSV file
+        
+    Returns:
+        list: List of dictionaries with the signals
     """
+    signals = []
+    try:
+        with open(filepath, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Convert string values to appropriate types
+                processed_row = {
+                    'Date': row['Date'],
+                    'Price': float(row['Price']),
+                    'Signal': int(float(row['Signal'])),  # Convert to int
+                    'Confidence': float(row['Confidence'])
+                }
+                signals.append(processed_row)
+        print(f"Loaded {len(signals)} trading signals from {filepath}")
+        return signals
+    except Exception as e:
+        print(f"Error loading signals from {filepath}: {e}")
+        return []
+
+def get_latest_signals(signals, count=5):
+    """
+    Get the latest trading signals
     
-    def __init__(self, token=None, chat_id=None, config_path='../config/telegram_config.json'):
-        """
-        Initialize the trade executor
+    Args:
+        signals (list): List of dictionaries with trading signals
+        count (int): Number of latest signals to return
         
-        Args:
-            token (str): Telegram bot token
-            chat_id (str): Telegram chat ID
-            config_path (str): Path to the Telegram configuration file
-        """
-        self.token = token
-        self.chat_id = chat_id
-        self.bot = None
-        
-        # Create logs directory if it doesn't exist
-        os.makedirs("../logs", exist_ok=True)
-        
-        # Try to load configuration from file if not provided
-        if (not token or not chat_id) and os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    self.token = config.get('token', token)
-                    self.chat_id = config.get('chat_id', chat_id)
-                    logger.info("Loaded Telegram configuration from file")
-            except Exception as e:
-                logger.error(f"Error loading Telegram configuration: {e}")
-        
-        # Initialize Telegram bot if token is available
-        if self.token:
-            try:
-                self.bot = telepot.Bot(self.token)
-                logger.info("Telegram bot initialized")
-            except Exception as e:
-                logger.error(f"Error initializing Telegram bot: {e}")
-                self.bot = None
+    Returns:
+        list: List of latest signals
+    """
+    if not signals:
+        return []
     
-    def save_config(self, config_path='../config/telegram_config.json'):
-        """
-        Save Telegram configuration to file
-        
-        Args:
-            config_path (str): Path to save the configuration
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        if not self.token or not self.chat_id:
-            logger.error("Token or chat ID not available")
-            return False
-        
-        config = {
-            'token': self.token,
-            'chat_id': self.chat_id
-        }
-        
-        try:
-            os.makedirs(os.path.dirname(config_path), exist_ok=True)
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=4)
-            logger.info(f"Configuration saved to {config_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Error saving configuration: {e}")
-            return False
+    return signals[-count:]
+
+def format_signal_message(signal):
+    """
+    Format a signal as a Telegram message
     
-    def send_message(self, message):
-        """
-        Send a message to Telegram
+    Args:
+        signal (dict): Signal to format
         
-        Args:
-            message (str): The message to send
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        if not self.bot or not self.chat_id:
-            logger.error("Telegram bot or chat ID not available")
-            return False
-        
-        try:
-            self.bot.sendMessage(self.chat_id, message)
-            logger.info(f"Message sent to Telegram: {message}")
-            return True
-        except Exception as e:
-            logger.error(f"Error sending message to Telegram: {e}")
-            return False
+    Returns:
+        str: Formatted message
+    """
+    signal_type = "BUY" if signal['Signal'] == 1 else "SELL" if signal['Signal'] == -1 else "HOLD"
+    confidence = signal['Confidence'] * 100
     
-    def generate_trade_signal(self, strategy, data):
-        """
-        Generate a trade signal based on the strategy
-        
-        Args:
-            strategy (TradingStrategy): The trading strategy
-            data (pandas.DataFrame): The price data
-            
-        Returns:
-            dict: The trade signal
-        """
-        # Generate signals
-        signals = strategy.generate_signals(data)
-        
-        if signals is None or signals.empty:
-            logger.error("Failed to generate signals")
-            return None
-        
-        # Get the latest signal
-        latest_signal = signals.iloc[-1]
-        
-        # Create trade signal
-        trade_signal = {
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'symbol': 'CL=F',  # WTI Crude Oil Futures
-            'price': data['Close'].iloc[-1],
-            'signal': 'BUY' if latest_signal['Signal'] > 0 else 'SELL',
-            'confidence': float(latest_signal['Prediction']),
-            'indicators': {
-                'RSI': data['RSI'].iloc[-1] if 'RSI' in data else None,
-                'MACD': data['MACD'].iloc[-1] if 'MACD' in data else None,
-                'ADX': data['ADX'].iloc[-1] if 'ADX' in data else None
-            }
-        }
-        
-        return trade_signal
+    message = "🚨 WTI CRUDE OIL TRADING SIGNAL 🚨\n\n"
+    message += f"📅 Date: {signal['Date']}\n"
+    message += f"💰 Price: ${signal['Price']:.2f}\n"
+    message += f"🔍 Signal: {signal_type}\n"
+    message += f"📊 Confidence: {confidence:.1f}%\n\n"
     
-    def format_trade_message(self, trade_signal):
-        """
-        Format a trade signal as a Telegram message
-        
-        Args:
-            trade_signal (dict): The trade signal
-            
-        Returns:
-            str: The formatted message
-        """
-        message = f"🚨 *TRADE SIGNAL ALERT* 🚨\n\n"
-        message += f"*Symbol:* {trade_signal['symbol']} (WTI Crude Oil Futures)\n"
-        message += f"*Action:* {trade_signal['signal']}\n"
-        message += f"*Price:* ${trade_signal['price']:.2f}\n"
-        message += f"*Confidence:* {trade_signal['confidence']:.2f}\n"
-        message += f"*Time:* {trade_signal['timestamp']}\n\n"
-        
-        message += "*Technical Indicators:*\n"
-        
-        # Add indicators if available
-        indicators = trade_signal['indicators']
-        if indicators['RSI'] is not None:
-            message += f"RSI: {indicators['RSI']:.2f}\n"
-        if indicators['MACD'] is not None:
-            message += f"MACD: {indicators['MACD']:.2f}\n"
-        if indicators['ADX'] is not None:
-            message += f"ADX: {indicators['ADX']:.2f}\n"
-        
-        message += "\n*Risk Management:*\n"
-        
-        # Add risk management suggestions
-        if trade_signal['signal'] == 'BUY':
-            stop_loss = trade_signal['price'] * 0.98  # 2% below current price
-            take_profit = trade_signal['price'] * 1.05  # 5% above current price
-            message += f"Stop Loss: ${stop_loss:.2f}\n"
-            message += f"Take Profit: ${take_profit:.2f}\n"
-        else:  # SELL
-            stop_loss = trade_signal['price'] * 1.02  # 2% above current price
-            take_profit = trade_signal['price'] * 0.95  # 5% below current price
-            message += f"Stop Loss: ${stop_loss:.2f}\n"
-            message += f"Take Profit: ${take_profit:.2f}\n"
-        
-        message += "\n*Disclaimer:*\n"
-        message += "This is an automated trading signal. Always conduct your own analysis before making trading decisions."
-        
-        return message
+    if signal_type == "BUY":
+        message += "⚠️ Action: Consider opening a LONG position\n"
+        message += f"🛑 Suggested Stop Loss: ${signal['Price'] * 0.98:.2f} (2% below entry)\n"
+        message += f"🎯 Suggested Take Profit: ${signal['Price'] * 1.05:.2f} (5% above entry)"
+    elif signal_type == "SELL":
+        message += "⚠️ Action: Consider opening a SHORT position\n"
+        message += f"🛑 Suggested Stop Loss: ${signal['Price'] * 1.02:.2f} (2% above entry)\n"
+        message += f"🎯 Suggested Take Profit: ${signal['Price'] * 0.95:.2f} (5% below entry)"
+    else:
+        message += "⚠️ Action: No action recommended at this time"
     
-    def execute_trade(self, strategy, data):
-        """
-        Generate a trade signal and send it to Telegram
+    return message
+
+def send_to_telegram(message, simulate=True):
+    """
+    Send a message to Telegram (simulated)
+    
+    Args:
+        message (str): Message to send
+        simulate (bool): Whether to simulate sending
         
-        Args:
-            strategy (TradingStrategy): The trading strategy
-            data (pandas.DataFrame): The price data
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        # Generate trade signal
-        trade_signal = self.generate_trade_signal(strategy, data)
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if simulate:
+        print("\n=== SIMULATED TELEGRAM MESSAGE ===")
+        print(message)
+        print("=================================\n")
+        return True
+    else:
+        # In a real implementation, this would use the Telegram API
+        print("Real Telegram sending not implemented")
+        return False
+
+def save_signal_to_log(signal, log_dir="../logs"):
+    """
+    Save a signal to the log
+    
+    Args:
+        signal (dict): Signal to save
+        log_dir (str): Directory to save logs
         
-        if trade_signal is None:
-            return False
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Create log directory if it doesn't exist
+        os.makedirs(log_dir, exist_ok=True)
         
-        # Format message
-        message = self.format_trade_message(trade_signal)
+        # Create log file path
+        log_file = f"{log_dir}/trade_signals_{datetime.now().strftime('%Y%m%d')}.json"
         
-        # Send message
-        success = self.send_message(message)
+        # Load existing logs if file exists
+        logs = []
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                logs = json.load(f)
         
-        # Log trade signal
-        log_path = f"../logs/trades_{datetime.now().strftime('%Y%m%d')}.json"
+        # Add new signal with timestamp
+        signal_with_timestamp = signal.copy()
+        signal_with_timestamp['Timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        logs.append(signal_with_timestamp)
         
-        try:
-            # Load existing trades
-            trades = []
-            if os.path.exists(log_path):
-                with open(log_path, 'r') as f:
-                    trades = json.load(f)
-            
-            # Add new trade
-            trades.append(trade_signal)
-            
-            # Save trades
-            with open(log_path, 'w') as f:
-                json.dump(trades, f, indent=4)
-            
-            logger.info(f"Trade signal logged to {log_path}")
-        except Exception as e:
-            logger.error(f"Error logging trade signal: {e}")
+        # Save logs
+        with open(log_file, 'w') as f:
+            json.dump(logs, f, indent=4)
         
-        return success
+        print(f"Signal saved to log: {log_file}")
+        return True
+    except Exception as e:
+        print(f"Error saving signal to log: {e}")
+        return False
 
 def main():
     """
@@ -255,60 +154,46 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Execute trades and send signals to Telegram')
-    parser.add_argument('--telegram', action='store_true', help='Send signals to Telegram')
-    parser.add_argument('--token', type=str, help='Telegram bot token')
-    parser.add_argument('--chat_id', type=str, help='Telegram chat ID')
-    parser.add_argument('--interval', type=int, default=3600, help='Interval between trades in seconds')
-    parser.add_argument('--once', action='store_true', help='Execute once and exit')
+    parser.add_argument('--signals', type=str, default='../data/trading_signals_ml.csv',
+                        help='Path to the signals CSV file')
+    parser.add_argument('--telegram', action='store_true',
+                        help='Send signals to Telegram (simulated)')
     args = parser.parse_args()
     
-    # Create executor
-    executor = TelegramTradeExecutor(token=args.token, chat_id=args.chat_id)
+    print("WTI Crude Oil Trading System - Trade Execution")
+    print("==============================================")
     
-    # Save configuration if provided
-    if args.token and args.chat_id:
-        executor.save_config()
+    # Load signals
+    signals = load_signals(args.signals)
     
-    # Create strategy
-    strategy = TradingStrategy()
-    strategy.load_model()
+    if not signals:
+        print(f"No signals found in {args.signals}")
+        return
     
-    if args.once:
-        # Execute once
-        logger.info("Executing trade once")
-        data = fetch_historical_data()
+    # Get latest signals
+    latest_signals = get_latest_signals(signals, count=5)
+    
+    print(f"\nLatest {len(latest_signals)} trading signals:")
+    for signal in latest_signals:
+        signal_type = "BUY" if signal['Signal'] == 1 else "SELL" if signal['Signal'] == -1 else "HOLD"
+        print(f"Date: {signal['Date']}, Price: ${signal['Price']:.2f}, Signal: {signal_type}, Confidence: {signal['Confidence']:.2f}")
+    
+    # Get the most recent signal
+    most_recent_signal = latest_signals[-1]
+    
+    # Format as Telegram message
+    message = format_signal_message(most_recent_signal)
+    
+    # Send to Telegram (simulated)
+    if args.telegram:
+        print("\nSending latest signal to Telegram...")
+        send_to_telegram(message)
         
-        if data is not None:
-            if args.telegram:
-                executor.execute_trade(strategy, data)
-            else:
-                trade_signal = executor.generate_trade_signal(strategy, data)
-                if trade_signal:
-                    logger.info(f"Trade signal: {trade_signal}")
-    else:
-        # Execute periodically
-        logger.info(f"Executing trades every {args.interval} seconds")
-        
-        while True:
-            try:
-                data = fetch_historical_data()
-                
-                if data is not None:
-                    if args.telegram:
-                        executor.execute_trade(strategy, data)
-                    else:
-                        trade_signal = executor.generate_trade_signal(strategy, data)
-                        if trade_signal:
-                            logger.info(f"Trade signal: {trade_signal}")
-                
-                logger.info(f"Sleeping for {args.interval} seconds")
-                time.sleep(args.interval)
-            except KeyboardInterrupt:
-                logger.info("Execution interrupted by user")
-                break
-            except Exception as e:
-                logger.error(f"Error during execution: {e}")
-                time.sleep(60)  # Sleep for a minute before retrying
+        # Save to log
+        save_signal_to_log(most_recent_signal)
+    
+    print("\nTrade execution complete!")
+    print("In a real-world scenario, these signals would be sent to Telegram for traders to act upon.")
 
 if __name__ == "__main__":
     main()
