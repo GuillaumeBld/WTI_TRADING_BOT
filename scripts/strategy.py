@@ -1,15 +1,29 @@
 """
-Trading Strategy Module - Machine Learning Version
+Trading Strategy Module - Machine Learning Version with Sentiment Analysis
 
-This module implements a trading strategy using machine learning to predict
-price movements and generate trading signals.
+This module implements a trading strategy using machine learning and sentiment analysis
+to predict price movements and generate trading signals.
 """
 
 import os
 import csv
 import math
+import json
 import random
 from datetime import datetime
+
+# Import sentiment analysis
+try:
+    from sentiment_analysis import SentimentAnalyzer
+except ImportError:
+    # If not in path, try relative import
+    import sys
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from sentiment_analysis import SentimentAnalyzer
+    except ImportError:
+        print("Warning: Sentiment analysis module not found. Proceeding without sentiment analysis.")
+        SentimentAnalyzer = None
 
 # Simulate scikit-learn's train_test_split function
 def train_test_split(X, y, test_size=0.2, random_state=None):
@@ -278,13 +292,14 @@ def train_model(features, target):
     
     return model
 
-def generate_signals_with_ml(data, model=None):
+def generate_signals_with_ml(data, model=None, use_sentiment=True):
     """
-    Generate trading signals using machine learning
+    Generate trading signals using machine learning and sentiment analysis
     
     Args:
         data (list): List of dictionaries with price and indicator data
         model (object): Trained machine learning model
+        use_sentiment (bool): Whether to incorporate sentiment analysis
         
     Returns:
         list: List of dictionaries with trading signals
@@ -307,9 +322,83 @@ def generate_signals_with_ml(data, model=None):
             'Date': dates[i],
             'Price': prices[i],
             'Signal': predictions[i],
-            'Confidence': probabilities[i]
+            'Confidence': probabilities[i],
+            'Sentiment_Used': False,
+            'Sentiment_Score': 0.0
         }
         signals.append(signal)
+    
+    # Incorporate sentiment analysis if requested
+    if use_sentiment and SentimentAnalyzer is not None:
+        try:
+            # Initialize sentiment analyzer
+            analyzer = SentimentAnalyzer()
+            
+            # Get sentiment data
+            sentiment_file = "../data/sentiment_analysis_latest.json"
+            sentiment_data = None
+            
+            # Try to find the most recent sentiment analysis file
+            if not os.path.exists(sentiment_file):
+                data_dir = "../data"
+                sentiment_files = [f for f in os.listdir(data_dir) if f.startswith("sentiment_analysis_") and f.endswith(".json")]
+                if sentiment_files:
+                    # Sort by timestamp (newest first)
+                    sentiment_files.sort(reverse=True)
+                    sentiment_file = os.path.join(data_dir, sentiment_files[0])
+            
+            # Load sentiment data if available
+            if os.path.exists(sentiment_file):
+                with open(sentiment_file, 'r') as f:
+                    sentiment_data = json.load(f)
+                print(f"Loaded sentiment data from {sentiment_file}")
+            else:
+                # Generate sentiment data if not available
+                print("No sentiment data found. Generating new sentiment analysis...")
+                news = analyzer.fetch_crude_oil_news()
+                sentiment_results = analyzer.analyze_news_sentiment(news)
+                trading_signal = analyzer.get_trading_signal_from_sentiment(sentiment_results)
+                sentiment_data = {
+                    "sentiment_results": sentiment_results,
+                    "trading_signal": trading_signal
+                }
+                print("Sentiment analysis generated.")
+            
+            # Adjust signals based on sentiment
+            if sentiment_data:
+                sentiment_score = sentiment_data["trading_signal"]["sentiment_score"]
+                sentiment_signal = sentiment_data["trading_signal"]["signal"]
+                sentiment_confidence = sentiment_data["trading_signal"]["confidence"]
+                
+                print(f"Incorporating sentiment analysis: Score={sentiment_score:.2f}, Signal={sentiment_signal}, Confidence={sentiment_confidence:.2f}")
+                
+                # Adjust the most recent signals (last 5 days) based on sentiment
+                for i in range(max(0, len(signals) - 5), len(signals)):
+                    # Get original signal
+                    original_signal = signals[i]['Signal']
+                    original_confidence = signals[i]['Confidence']
+                    
+                    # Adjust signal based on sentiment
+                    # If sentiment agrees with technical signal, boost confidence
+                    # If sentiment disagrees, reduce confidence or flip signal if sentiment is strong
+                    if (original_signal > 0 and sentiment_signal > 0) or (original_signal < 0 and sentiment_signal < 0):
+                        # Sentiment agrees with technical signal, boost confidence
+                        new_confidence = min(0.95, original_confidence + 0.1 * sentiment_confidence)
+                        signals[i]['Confidence'] = new_confidence
+                    elif abs(sentiment_signal) > 0.7 and sentiment_confidence > 0.7:
+                        # Strong sentiment disagrees with technical signal, flip signal
+                        signals[i]['Signal'] = sentiment_signal
+                        signals[i]['Confidence'] = sentiment_confidence
+                    elif sentiment_signal != 0:
+                        # Sentiment disagrees but not strongly, reduce confidence
+                        new_confidence = max(0.5, original_confidence - 0.1 * sentiment_confidence)
+                        signals[i]['Confidence'] = new_confidence
+                    
+                    # Mark as using sentiment
+                    signals[i]['Sentiment_Used'] = True
+                    signals[i]['Sentiment_Score'] = sentiment_score
+        except Exception as e:
+            print(f"Error incorporating sentiment analysis: {e}")
     
     return signals
 
@@ -326,7 +415,8 @@ def save_signals_to_csv(signals, filepath):
     """
     try:
         with open(filepath, 'w', newline='') as f:
-            fieldnames = ['Date', 'Price', 'Signal', 'Confidence']
+            # Include all fields in the signals
+            fieldnames = ['Date', 'Price', 'Signal', 'Confidence', 'Sentiment_Used', 'Sentiment_Score']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             
@@ -343,6 +433,15 @@ def main():
     """
     Main function to generate trading signals using machine learning
     """
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Generate trading signals using machine learning')
+    parser.add_argument('--sentiment', action='store_true', help='Use sentiment analysis')
+    parser.add_argument('--no-sentiment', dest='sentiment', action='store_false', help='Do not use sentiment analysis')
+    parser.add_argument('--output', type=str, default='../data/trading_signals_ml.csv', help='Output file path')
+    parser.set_defaults(sentiment=True)
+    args = parser.parse_args()
+    
     print("WTI Crude Oil Trading System - ML Strategy")
     print("==========================================")
     
@@ -357,7 +456,7 @@ def main():
     print(f"Generating ML-based trading signals for {len(data)} records...")
     
     # Generate signals using machine learning
-    signals = generate_signals_with_ml(data)
+    signals = generate_signals_with_ml(data, use_sentiment=args.sentiment)
     
     if not signals:
         print("Failed to generate signals.")
@@ -369,13 +468,15 @@ def main():
     print("\nLast 5 trading signals:")
     for signal in signals[-5:]:
         signal_type = "BUY" if signal['Signal'] == 1 else "SELL" if signal['Signal'] == -1 else "HOLD"
-        print(f"Date: {signal['Date']}, Price: ${signal['Price']:.2f}, Signal: {signal_type}, Confidence: {signal['Confidence']:.2f}")
+        sentiment_info = f", Sentiment: {signal['Sentiment_Score']:.2f}" if signal['Sentiment_Used'] else ""
+        print(f"Date: {signal['Date']}, Price: ${signal['Price']:.2f}, Signal: {signal_type}, Confidence: {signal['Confidence']:.2f}{sentiment_info}")
     
     # Save signals
-    output_path = "../data/trading_signals_ml.csv"
+    output_path = args.output
     save_signals_to_csv(signals, output_path)
     
     print("\nML trading strategy execution complete!")
+    print(f"Sentiment analysis: {'Enabled' if args.sentiment else 'Disabled'}")
     print("You can now proceed with backtesting the ML strategy.")
 
 if __name__ == "__main__":
