@@ -64,7 +64,7 @@ class TradingStrategy:
                 close = record[4] if len(record) > 4 else 70.0
             signals.append({
                 'Date': date,
-                'Price': close,
+                'Price': round(close, 2),  # Round to nearest cent
                 'Signal': 1,       # BUY signal for demonstration
                 'Confidence': 0.75
             })

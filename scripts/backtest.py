@@ -175,8 +175,11 @@ def run_backtest(price_data, signals, initial_capital=100000.0, commission_rate=
             signal = daily_signals[0]
             if signal['Signal'] == 1 and portfolio['position'] == 0:
                 # BUY: invest all cash
-                shares = portfolio['cash'] / (close_price * (1 + commission_rate + slippage_rate))
-                cost = close_price * shares * (1 + commission_rate + slippage_rate)
+                # Round price to nearest cent and quantity to whole shares
+                rounded_price = round(close_price, 2)
+                shares = portfolio['cash'] / (rounded_price * (1 + commission_rate + slippage_rate))
+                shares = int(shares)  # Round down to whole shares
+                cost = rounded_price * shares * (1 + commission_rate + slippage_rate)
                 portfolio['cash'] -= cost
                 portfolio['position'] = shares
                 portfolio['entry_price'] = close_price
@@ -184,7 +187,8 @@ def run_backtest(price_data, signals, initial_capital=100000.0, commission_rate=
                 logging.info(f"BUY on {day_date}: {shares:.2f} shares at ${close_price:.2f}")
             elif signal['Signal'] == -1 and portfolio['position'] > 0:
                 # SELL: liquidate position
-                revenue = close_price * portfolio['position'] * (1 - commission_rate - slippage_rate)
+                rounded_price = round(close_price, 2)
+                revenue = rounded_price * portfolio['position'] * (1 - commission_rate - slippage_rate)
                 portfolio['cash'] += revenue
                 portfolio['trades'] += 1
                 pnl = revenue - (portfolio['position'] * portfolio['entry_price'])
@@ -200,7 +204,8 @@ def run_backtest(price_data, signals, initial_capital=100000.0, commission_rate=
         if portfolio['position'] > 0 and portfolio['entry_price'] is not None:
             # Stop loss check
             if close_price <= portfolio['entry_price'] * (1 - stop_loss_pct):
-                revenue = close_price * portfolio['position'] * (1 - commission_rate - slippage_rate)
+                rounded_price = round(close_price, 2)
+                revenue = rounded_price * portfolio['position'] * (1 - commission_rate - slippage_rate)
                 portfolio['cash'] += revenue
                 portfolio['trades'] += 1
                 pnl = revenue - (portfolio['position'] * portfolio['entry_price'])
