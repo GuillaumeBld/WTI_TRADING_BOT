@@ -1,66 +1,15 @@
-# Python
+# Ignore Python virtual environment
+.venv/
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+*.pyc
 
-# Virtual Environment
-venv/
-env/
-ENV/
-
-# Environment Variables
+# Ignore sensitive data (API keys, passwords)
 .env
+*.key
+*.credentials
 
-# Data Files
-data/*.csv
-data/*.json
-data/*.db
-data/*.sqlite
-
-# Model Files
-models/*.pkl
-models/*.h5
-models/*.joblib
-models/*.pt
-
-# Logs
-logs/
+# Ignore large or temporary files
 *.log
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Results
-results/
+*.db  # Unless you want to version control market_data.db; adjust as needed
+data/market_data.db  # Optional: exclude database if you want to manage it separately
+data/news_archive.json  # Optional: exclude if you want to manage news data separately

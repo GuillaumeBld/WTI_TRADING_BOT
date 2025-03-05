@@ -1,33 +1,26 @@
-# Core Python libraries
+# Core dependencies
 numpy
 pandas
+scipy
 matplotlib
-scikit-learn
 seaborn
+scikit-learn
 
-# Financial data libraries
+# API clients
+newsapi-python
 yfinance
-alpha_vantage
-ccxt
+requests
 
-# Machine learning libraries
-tensorflow
+# NLP and sentiment analysis
 torch
-lightgbm
-xgboost
-finrl
+transformers
+finbert
+schedule
 
-# Backtesting and trading libraries
-backtrader
-bt
-zipline
-TA-Lib
+# Database and logging
+sqlite3
+logging
 
-# Web framework
-Flask
-FastAPI
-
-# Messaging libraries for alerts
-telepot
-discord.py
-slack_sdk
+# Other utilities
+argparse
+tqdm

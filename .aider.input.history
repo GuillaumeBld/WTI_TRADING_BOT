@@ -1,0 +1,87 @@
+
+# 2025-03-05 16:16:49.648910
++y
+
+# 2025-03-05 16:18:46.186758
++hello
+
+# 2025-03-05 16:19:49.759361
++please go through it without making any changes and give me an overview of what it does
+
+# 2025-03-05 16:21:25.911693
++no go into the /scripts folder and read the .py codes
+
+# 2025-03-05 16:22:17.137753
++y
+
+# 2025-03-05 16:23:59.650191
++n
+
+# 2025-03-05 16:24:58.784312
++scripts/sentiment_analysis.py
+
+# 2025-03-05 16:25:59.280138
++y
+
+# 2025-03-05 16:27:59.613376
++read `CrudeOilSentimentAgent`
+
+# 2025-03-05 16:30:16.612811
++well everything you see in the sentiment_analsysis.py file actually come from a crude_oil_sentiment_bot.py you seems not be able to see 
+
+# 2025-03-05 16:30:41.586243
++y
+
+# 2025-03-05 16:33:34.620235
++i believe we nee to enter the .venv
+
+# 2025-03-05 16:33:41.472508
++y
+
+# 2025-03-05 16:33:41.476184
++/run pip install newsapi-python transformers
+
+# 2025-03-05 16:33:41.476296
++/run pip install newsapi-python transformers
+
+# 2025-03-05 16:33:45.730702
++y
+
+# 2025-03-05 16:34:43.453888
++the most important and pricipal file from this trading bot is "strategy_manager.py"
+
+# 2025-03-05 16:35:46.829969
++n
+
+# 2025-03-05 16:36:15.888108
++/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/scripts/sentiment_analysis.py
+
+# 2025-03-05 16:36:31.248572
++scripts/sentiment_analysis.py
+
+# 2025-03-05 16:38:27.289756
++n
+
+# 2025-03-05 16:39:55.626921
++make sur to round the signal prices to the nearest cent and the quantity as whole number
+
+# 2025-03-05 16:43:39.957238
++i think we must not make any chnages to the code until you are able to see every code file in this code base. in /scripts there is 17 python files
+
+# 2025-03-05 16:45:14.580259
++i want you to see the whole code base of under the folder /trading_bot
+
+# 2025-03-05 16:45:45.421322
++y
+
+# 2025-03-05 16:47:33.578154
++/run rm some/path/to/file.py
+
+# 2025-03-05 16:47:33.578765
++/run rm some/path/to/file.py
+
+# 2025-03-05 16:48:03.590834
++trade_execution.py
+
+# 2025-03-05 16:49:11.392404
++y

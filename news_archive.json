@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Crude oil futures decline as OPEC plans to increase production",
+    "description": "At 9.55 am on Tuesday, May Brent oil futures were at $71.15, down by 0.66 per cent, and April crude oil futures on WTI (West Texas Intermediate) were at $68.11, down by 0.38 per cent",
+    "publishedAt": "2025-03-04T05:10:37+00:00",
+    "source": {
+      "id": null,
+      "name": "BusinessLine"
+    },
+    "fetch_timestamp": "2025-03-05T01:07:03.726333"
+  },
+  {
+    "title": "Oil prices slide on Ukraine aid pause, tariffs and OPEC+ output increase",
+    "description": "Oil prices fell further due to the U.S. pausing military aid to Ukraine and pending tariffs on Canada, Mexico, and China. The market sees potential sanctions relief for Russia potentially easing supply constraints. Meanwhile, the OPEC+ plan to increase oil pr\u2026",
+    "publishedAt": "2025-03-04T03:38:27+00:00",
+    "source": {
+      "id": "the-times-of-india",
+      "name": "The Times of India"
+    },
+    "fetch_timestamp": "2025-03-05T01:07:03.726353"
+  },
+  {
+    "title": "Trump US Tariffs Live Updates: Trade war escalates: Trump confirms 25% tariffs on Canada, Mexico, China responds",
+    "description": "Donald Trump New Tariffs announcements, US Stocks & market live news updates: President Donald Trump announced Monday that the U.S. will impose 25% tariffs on imports from Canada and Mexico starting Tuesday. The move reignites fears of a North American trade \u2026",
+    "publishedAt": "2025-03-04T03:50:32+00:00",
+    "source": {
+      "id": null,
+      "name": "BusinessLine"
+    },
+    "fetch_timestamp": "2025-03-05T01:07:03.726356"
+  },
+  {
+    "title": "Nifty sinks below 22,000, Sensex falls over 350 points, tracking global peers ahead of Trump's tariffs",
+    "description": "Indian benchmark indices, Sensex and Nifty, fell on Tuesday, impacted by losses in Reliance Industries and IT stocks, following declines in Asian markets. This downturn was driven by Trump's reiterated commitment to impose 25% tariffs on Canada and Mexico and\u2026",
+    "publishedAt": "2025-03-04T03:57:28+00:00",
+    "source": {
+      "id": "the-times-of-india",
+      "name": "The Times of India"
+    },
+    "fetch_timestamp": "2025-03-05T01:07:03.726358"
+  }
+]

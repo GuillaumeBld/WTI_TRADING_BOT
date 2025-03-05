@@ -1,333 +1,156 @@
-"""
-Technical Indicators Module - Demo Version
-
-This is a simplified version of the technical indicators module that calculates
-indicators using basic Python without external dependencies.
-"""
-
 import os
-import csv
-import math
+import sqlite3
+import logging
 from datetime import datetime
+import pandas as pd
+import numpy as np
 
-def load_csv_data(filepath):
+# Configure logging for indicators
+logging.basicConfig(
+    filename="/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/indicators_logs.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def load_data(filepath):
     """
-    Load data from a CSV file
+    Load price data from a CSV file using pandas.
     
     Args:
-        filepath (str): Path to the CSV file
+        filepath (str): Absolute path to the CSV file.
         
     Returns:
-        list: List of dictionaries with the data
+        DataFrame: Pandas DataFrame with the price data.
     """
-    data = []
     try:
-        with open(filepath, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                # Convert string values to appropriate types
-                processed_row = {
-                    'Date': row['Date'],
-                    'Open': float(row['Open']),
-                    'High': float(row['High']),
-                    'Low': float(row['Low']),
-                    'Close': float(row['Close']),
-                    'Volume': int(row['Volume'])
-                }
-                data.append(processed_row)
-        print(f"Loaded {len(data)} records from {filepath}")
-        return data
+        df = pd.read_csv(filepath, parse_dates=["Date"])
+        logging.info(f"Loaded {len(df)} records from {filepath}")
+        return df
     except Exception as e:
-        print(f"Error loading data from {filepath}: {e}")
-        return []
+        logging.error(f"Error loading data from {filepath}: {e}")
+        return None
 
-def calculate_sma(data, field='Close', period=14):
+def calculate_indicators(df):
     """
-    Calculate Simple Moving Average
+    Calculate technical indicators using pandas.
+    
+    Indicators calculated:
+      - EMA (9 and 21)
+      - RSI (14)
+      - MACD, MACD Signal, MACD Histogram
+      - ADX (14) using a simplified method
     
     Args:
-        data (list): List of dictionaries with price data
-        field (str): The field to calculate SMA for
-        period (int): The period for SMA calculation
+        df (DataFrame): DataFrame containing at least 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'.
         
     Returns:
-        list: List of SMA values
+        DataFrame: Original DataFrame with added indicator columns.
     """
-    sma_values = []
+    # Ensure the data is sorted by Date
+    df = df.sort_values("Date").reset_index(drop=True)
     
-    for i in range(len(data)):
-        if i < period - 1:
-            sma_values.append(None)  # Not enough data for SMA
-        else:
-            # Calculate sum of closing prices for the period
-            sum_prices = sum(data[j][field] for j in range(i - period + 1, i + 1))
-            sma = sum_prices / period
-            sma_values.append(sma)
+    # Convert columns to numeric, coerce errors to NaN
+    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    return sma_values
+    # Drop rows where 'Close' is NaN (or any key numeric field if desired)
+    df.dropna(subset=['Close'], inplace=True)
+    
+    # EMA calculations using pandas ewm
+    df["EMA_9"] = df["Close"].ewm(span=9, adjust=False).mean()
+    df["EMA_21"] = df["Close"].ewm(span=21, adjust=False).mean()
+    
+    # RSI calculation
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    period = 14
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    rs = avg_gain / avg_loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+    
+    # MACD calculation
+    ema_fast = df["Close"].ewm(span=12, adjust=False).mean()
+    ema_slow = df["Close"].ewm(span=26, adjust=False).mean()
+    df["MACD"] = ema_fast - ema_slow
+    df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+    df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
+    
+    # ADX calculation (simplified)
+    df["prev_Close"] = df["Close"].shift(1)
+    df["TR"] = np.maximum(df["High"] - df["Low"],
+                          np.maximum((df["High"] - df["prev_Close"]).abs(), (df["Low"] - df["prev_Close"]).abs()))
+    df["up_move"] = df["High"] - df["High"].shift(1)
+    df["down_move"] = df["Low"].shift(1) - df["Low"]
+    df["+DM"] = np.where((df["up_move"] > df["down_move"]) & (df["up_move"] > 0), df["up_move"], 0)
+    df["-DM"] = np.where((df["down_move"] > df["up_move"]) & (df["down_move"] > 0), df["down_move"], 0)
+    
+    period_adx = 14
+    df["+DM_Smooth"] = df["+DM"].rolling(window=period_adx, min_periods=period_adx).sum()
+    df["-DM_Smooth"] = df["-DM"].rolling(window=period_adx, min_periods=period_adx).sum()
+    df["TR_Sum"] = df["TR"].rolling(window=period_adx, min_periods=period_adx).sum()
+    df["+DI"] = 100 * df["+DM_Smooth"] / df["TR_Sum"]
+    df["-DI"] = 100 * df["-DM_Smooth"] / df["TR_Sum"]
+    df["DX"] = 100 * (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"]))
+    df["ADX"] = df["DX"].rolling(window=period_adx, min_periods=period_adx).mean()
+    
+    # Clean up temporary columns
+    df.drop(columns=["prev_Close", "up_move", "down_move", "+DM", "-DM", "+DM_Smooth", "-DM_Smooth", "TR_Sum", "DX"], inplace=True)
+    
+    return df
 
-def calculate_rsi(data, period=14):
+def save_indicators_to_db(df, db_path):
     """
-    Calculate Relative Strength Index (RSI)
+    Store the DataFrame with indicators into an SQLite database.
     
     Args:
-        data (list): List of dictionaries with price data
-        period (int): The period for RSI calculation
+        df (DataFrame): DataFrame with computed indicators.
+        db_path (str): Absolute path to the SQLite database.
         
     Returns:
-        list: List of RSI values
-    """
-    rsi_values = []
-    
-    # Calculate price changes
-    price_changes = []
-    for i in range(1, len(data)):
-        price_changes.append(data[i]['Close'] - data[i-1]['Close'])
-    
-    # For the first period-1 data points, RSI is not defined
-    for _ in range(period):
-        rsi_values.append(None)
-    
-    # Calculate RSI for the rest of the data
-    for i in range(period, len(data)):
-        gains = []
-        losses = []
-        
-        # Get price changes for the period
-        for j in range(i - period, i):
-            change = price_changes[j - 1]
-            if change > 0:
-                gains.append(change)
-                losses.append(0)
-            else:
-                gains.append(0)
-                losses.append(abs(change))
-        
-        # Calculate average gain and loss
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        
-        # Calculate RS
-        if avg_loss == 0:
-            rs = 100  # Avoid division by zero
-        else:
-            rs = avg_gain / avg_loss
-        
-        # Calculate RSI
-        rsi = 100 - (100 / (1 + rs))
-        rsi_values.append(rsi)
-    
-    return rsi_values
-
-def calculate_macd(data, fast_period=12, slow_period=26, signal_period=9):
-    """
-    Calculate Moving Average Convergence Divergence (MACD)
-    
-    Args:
-        data (list): List of dictionaries with price data
-        fast_period (int): The fast EMA period
-        slow_period (int): The slow EMA period
-        signal_period (int): The signal line period
-        
-    Returns:
-        tuple: (List of MACD values, List of Signal values, List of Histogram values)
-    """
-    # Calculate EMAs
-    ema_fast = calculate_ema(data, period=fast_period)
-    ema_slow = calculate_ema(data, period=slow_period)
-    
-    # Calculate MACD line
-    macd_line = []
-    for i in range(len(data)):
-        if ema_fast[i] is None or ema_slow[i] is None:
-            macd_line.append(None)
-        else:
-            macd_line.append(ema_fast[i] - ema_slow[i])
-    
-    # Calculate signal line (EMA of MACD)
-    signal_line = []
-    for i in range(len(data)):
-        if i < slow_period + signal_period - 2:
-            signal_line.append(None)
-        else:
-            # Calculate EMA of MACD
-            macd_period = macd_line[i-(signal_period-1):i+1]
-            macd_period = [m for m in macd_period if m is not None]
-            
-            if len(macd_period) < signal_period:
-                signal_line.append(None)
-            else:
-                # Simple approximation of EMA for demo
-                signal = sum(macd_period) / len(macd_period)
-                signal_line.append(signal)
-    
-    # Calculate histogram
-    histogram = []
-    for i in range(len(data)):
-        if macd_line[i] is None or signal_line[i] is None:
-            histogram.append(None)
-        else:
-            histogram.append(macd_line[i] - signal_line[i])
-    
-    return macd_line, signal_line, histogram
-
-def calculate_ema(data, field='Close', period=14):
-    """
-    Calculate Exponential Moving Average (EMA)
-    
-    Args:
-        data (list): List of dictionaries with price data
-        field (str): The field to calculate EMA for
-        period (int): The period for EMA calculation
-        
-    Returns:
-        list: List of EMA values
-    """
-    ema_values = []
-    
-    # For the first period-1 data points, EMA is not defined
-    for _ in range(period - 1):
-        ema_values.append(None)
-    
-    # First EMA is the SMA of the first period points
-    prices = [data[i][field] for i in range(period)]
-    first_ema = sum(prices) / period
-    ema_values.append(first_ema)
-    
-    # Calculate multiplier
-    multiplier = 2 / (period + 1)
-    
-    # Calculate EMA for the rest of the data
-    for i in range(period, len(data)):
-        if ema_values[i-1] is None:
-            ema_values.append(None)
-        else:
-            ema = (data[i][field] * multiplier) + (ema_values[i-1] * (1 - multiplier))
-            ema_values.append(ema)
-    
-    return ema_values
-
-def calculate_adx(data, period=14):
-    """
-    Calculate Average Directional Index (ADX) - Simplified version
-    
-    Args:
-        data (list): List of dictionaries with price data
-        period (int): The period for ADX calculation
-        
-    Returns:
-        list: List of ADX values
-    """
-    # This is a simplified version that returns random values for demonstration
-    adx_values = []
-    
-    # For the first 2*period-1 data points, ADX is not defined
-    for _ in range(2 * period - 1):
-        adx_values.append(None)
-    
-    # Generate random ADX values between 0 and 100 for the rest
-    for _ in range(2 * period - 1, len(data)):
-        adx = 25 + (20 * math.sin(len(adx_values) / 10))  # Oscillating around 25
-        adx_values.append(max(0, min(100, adx)))  # Clamp between 0 and 100
-    
-    return adx_values
-
-def add_indicators_to_data(data):
-    """
-    Add technical indicators to the data
-    
-    Args:
-        data (list): List of dictionaries with price data
-        
-    Returns:
-        list: List of dictionaries with added indicators
-    """
-    # Make a copy to avoid modifying the original
-    result = []
-    for item in data:
-        result.append(item.copy())
-    
-    # Calculate indicators
-    rsi_values = calculate_rsi(data)
-    macd_line, signal_line, histogram = calculate_macd(data)
-    adx_values = calculate_adx(data)
-    ema9_values = calculate_ema(data, period=9)
-    ema21_values = calculate_ema(data, period=21)
-    
-    # Add indicators to the data
-    for i in range(len(result)):
-        result[i]['RSI'] = rsi_values[i]
-        result[i]['MACD'] = macd_line[i]
-        result[i]['MACD_Signal'] = signal_line[i]
-        result[i]['MACD_Hist'] = histogram[i]
-        result[i]['ADX'] = adx_values[i]
-        result[i]['EMA_9'] = ema9_values[i]
-        result[i]['EMA_21'] = ema21_values[i]
-    
-    return result
-
-def save_indicators_to_csv(data, filepath):
-    """
-    Save data with indicators to a CSV file
-    
-    Args:
-        data (list): List of dictionaries with indicators
-        filepath (str): Path to save the CSV file
-        
-    Returns:
-        bool: True if successful, False otherwise
+        bool: True if successful, False otherwise.
     """
     try:
-        with open(filepath, 'w', newline='') as f:
-            # Get all field names
-            fieldnames = list(data[0].keys())
-            
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            for row in data:
-                # Convert None values to empty strings for CSV
-                row_copy = {}
-                for key, value in row.items():
-                    if value is None:
-                        row_copy[key] = ''
-                    else:
-                        row_copy[key] = value
-                
-                writer.writerow(row_copy)
-        
-        print(f"Data with indicators saved to {filepath}")
+        conn = sqlite3.connect(db_path)
+        df.to_sql("market_data", conn, if_exists="replace", index=False)
+        conn.close()
+        logging.info(f"Indicators stored in SQLite database at {db_path} in table 'market_data'")
         return True
     except Exception as e:
-        print(f"Error saving data to {filepath}: {e}")
+        logging.error(f"Error saving indicators to SQLite: {e}")
         return False
 
 def main():
-    """
-    Main function to calculate indicators and save results
-    """
-    print("WTI Crude Oil Trading System - Technical Indicators")
-    print("==================================================")
+    logging.info("Starting technical indicators calculation...")
     
-    # Load data
-    data_path = "../data/crude_oil_data.csv"
-    data = load_csv_data(data_path)
+    data_csv_path = "/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/crude_oil_data.csv"
+    db_path = "/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/market_data.db"
     
-    if not data:
-        print("No data available. Please run data_fetch.py first.")
+    df = load_data(data_csv_path)
+    if df is None:
+        print("Failed to load price data. Please check the CSV file.")
         return
     
-    print(f"Calculating technical indicators for {len(data)} records...")
+    logging.info("Calculating technical indicators using pandas...")
+    df_with_indicators = calculate_indicators(df)
     
-    # Add indicators
-    data_with_indicators = add_indicators_to_data(data)
+    # Optionally, save to CSV for verification
+    output_csv = "/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/crude_oil_with_indicators.csv"
+    try:
+        df_with_indicators.to_csv(output_csv, index=False)
+        logging.info(f"Indicators saved to CSV at {output_csv}")
+    except Exception as e:
+        logging.error(f"Error saving indicators to CSV: {e}")
     
-    # Save results
-    output_path = "../data/crude_oil_with_indicators.csv"
-    save_indicators_to_csv(data_with_indicators, output_path)
+    # Save indicators directly to SQLite
+    if save_indicators_to_db(df_with_indicators, db_path):
+        print("Indicator calculation complete! Data stored in SQLite.")
+    else:
+        print("Indicator calculation complete, but failed to store data in SQLite.")
     
-    print("\nIndicator calculation complete!")
-    print("You can now proceed with the trading strategy and backtesting.")
+    logging.info("Technical indicators calculation complete!")
 
 if __name__ == "__main__":
     main()
