@@ -8,7 +8,7 @@ and generates trading signals based on the sentiment analysis.
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from newsapi import NewsApiClient
 from transformers import pipeline
