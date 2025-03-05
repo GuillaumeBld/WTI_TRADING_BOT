@@ -10,7 +10,14 @@ import csv
 import math
 import json
 import random
+import sqlite3
 from datetime import datetime
+
+# Absolute path to your CSV file with indicators:
+INDICATORS_DATA_PATH = "/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/crude_oil_with_indicators.csv"
+
+# Absolute path to the SQLite database (where signals will be stored)
+DB_PATH = "/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/data/market_data.db"
 
 # Import sentiment analysis
 try:
@@ -25,33 +32,58 @@ except ImportError:
         print("Warning: Sentiment analysis module not found. Proceeding without sentiment analysis.")
         SentimentAnalyzer = None
 
-# Simulate scikit-learn's train_test_split function
+class TradingStrategy:
+    """
+    TradingStrategy class for generating trading signals using machine learning and sentiment analysis.
+    This dummy implementation is for testing purposes.
+    """
+    def __init__(self):
+        self.model = None
+
+    def load_model(self):
+        # Simulate loading a machine learning model
+        print("Loading dummy trading strategy model...")
+        self.model = "DummyModel"
+
+    def generate_signals(self, data):
+        """
+        Generate trading signals based on the input data.
+        Args:
+            data (list or DataFrame): Market data records.
+        Returns:
+            list: A list of signal dictionaries with keys: 'Date', 'Price', 'Signal', 'Confidence'.
+        """
+        signals = []
+        for record in data:
+            # If record is a dict, use .get(); if it's a tuple, assume column order: Date, Open, High, Low, Close, Volume.
+            if isinstance(record, dict):
+                date = record.get('Date', '2025-03-01')
+                close = record.get('Close', 70.0)
+            else:
+                date = record[0] if len(record) > 0 else '2025-03-01'
+                close = record[4] if len(record) > 4 else 70.0
+            signals.append({
+                'Date': date,
+                'Price': close,
+                'Signal': 1,       # BUY signal for demonstration
+                'Confidence': 0.75
+            })
+        return signals
+
 def train_test_split(X, y, test_size=0.2, random_state=None):
     """
-    Split arrays into random train and test subsets
-    
-    Args:
-        X (list): Features
-        y (list): Target
-        test_size (float): Proportion of the dataset to include in the test split
-        random_state (int): Controls the shuffling applied to the data
-        
-    Returns:
-        tuple: (X_train, X_test, y_train, y_test)
+    Simulate scikit-learn's train_test_split function.
     """
     if random_state is not None:
         random.seed(random_state)
     
-    # Create indices and shuffle
     indices = list(range(len(X)))
     random.shuffle(indices)
     
-    # Split indices
     test_count = int(len(X) * test_size)
     test_indices = indices[:test_count]
     train_indices = indices[test_count:]
     
-    # Split data
     X_train = [X[i] for i in train_indices]
     X_test = [X[i] for i in test_indices]
     y_train = [y[i] for i in train_indices]
@@ -59,32 +91,16 @@ def train_test_split(X, y, test_size=0.2, random_state=None):
     
     return X_train, X_test, y_train, y_test
 
-# Simulate a simple decision tree classifier
 class SimpleDecisionTree:
     """
-    A simple decision tree classifier implementation
+    A simple decision tree classifier implementation.
     """
-    
     def __init__(self, max_depth=3):
-        """
-        Initialize the decision tree
-        
-        Args:
-            max_depth (int): Maximum depth of the tree
-        """
         self.max_depth = max_depth
         self.tree = None
     
     def fit(self, X, y):
-        """
-        Build the decision tree
-        
-        Args:
-            X (list): Features
-            y (list): Target
-        """
-        # For simplicity, we'll just create some rules based on domain knowledge
-        # rather than actually building a tree
+        # For simplicity, we create domain-based rules instead of an actual tree
         self.tree = {
             'rsi_threshold': 30,
             'macd_threshold': 0,
@@ -93,27 +109,9 @@ class SimpleDecisionTree:
         }
     
     def predict(self, X):
-        """
-        Predict class for X
-        
-        Args:
-            X (list): Features
-            
-        Returns:
-            list: Predicted classes
-        """
         predictions = []
-        
         for features in X:
-            # Extract features
-            rsi = features[0]
-            macd = features[1]
-            macd_signal = features[2]
-            ema_9 = features[4]
-            ema_21 = features[5]
-            adx = features[3]
-            
-            # Apply rules
+            rsi, macd, macd_signal, adx, ema_9, ema_21 = features
             score = 0
             
             # RSI rule
@@ -136,30 +134,19 @@ class SimpleDecisionTree:
             
             # ADX rule
             if adx > self.tree['adx_threshold']:
-                # Strong trend, amplify the signal
                 score *= 1.2
             
             # Convert score to prediction
             if score > 0.5:
-                predictions.append(1)  # Buy
+                predictions.append(1)   # Buy
             elif score < -0.5:
                 predictions.append(-1)  # Sell
             else:
-                predictions.append(0)  # Hold
+                predictions.append(0)   # Hold
         
         return predictions
     
     def predict_proba(self, X):
-        """
-        Predict class probabilities for X
-        
-        Args:
-            X (list): Features
-            
-        Returns:
-            list: Predicted probabilities
-        """
-        # For simplicity, convert predictions to probabilities
         predictions = self.predict(X)
         probabilities = []
         
@@ -167,15 +154,14 @@ class SimpleDecisionTree:
             if pred == 1:
                 probabilities.append(0.7)  # 70% confidence for buy
             elif pred == -1:
-                probabilities.append(0.3)  # 30% confidence for sell (70% for not buy)
+                probabilities.append(0.3)  # 30% confidence for sell
             else:
-                probabilities.append(0.5)  # 50% confidence for hold
-        
+                probabilities.append(0.5)  # 50% for hold
         return probabilities
 
 def load_data_with_indicators(filepath):
     """
-    Load data with indicators from a CSV file
+    Load data with indicators from a CSV file.
     
     Args:
         filepath (str): Path to the CSV file
@@ -188,14 +174,13 @@ def load_data_with_indicators(filepath):
         with open(filepath, 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Convert string values to appropriate types
                 processed_row = {
                     'Date': row['Date'],
                     'Open': float(row['Open']) if row['Open'] else None,
                     'High': float(row['High']) if row['High'] else None,
                     'Low': float(row['Low']) if row['Low'] else None,
                     'Close': float(row['Close']) if row['Close'] else None,
-                    'Volume': int(row['Volume']) if row['Volume'] else None,
+                    'Volume': int(float(row['Volume'])) if row['Volume'] else None,
                     'RSI': float(row['RSI']) if row['RSI'] else None,
                     'MACD': float(row['MACD']) if row['MACD'] else None,
                     'MACD_Signal': float(row['MACD_Signal']) if row['MACD_Signal'] else None,
@@ -213,33 +198,29 @@ def load_data_with_indicators(filepath):
 
 def prepare_features_and_target(data):
     """
-    Prepare features and target for machine learning
-    
-    Args:
-        data (list): List of dictionaries with price and indicator data
-        
-    Returns:
-        tuple: (features, target, dates, prices)
+    Prepare features (indicators) and target (future price movement).
     """
     features = []
     target = []
     dates = []
     prices = []
     
-    # We need at least 2 days of data to calculate the target (price change)
+    # We need at least 2 days to measure next-day price change
     for i in range(len(data) - 1):
-        # Skip records with missing indicators
+        # Skip if any indicators are missing
         if (data[i]['RSI'] is None or data[i]['MACD'] is None or 
             data[i]['MACD_Signal'] is None or data[i]['ADX'] is None or 
             data[i]['EMA_9'] is None or data[i]['EMA_21'] is None):
             continue
         
-        # Calculate price change for the next day
         current_price = data[i]['Close']
-        next_price = data[i + 1]['Close']
+        next_price = data[i+1]['Close']
+        if current_price is None or next_price is None:
+            continue
+        
         price_change = (next_price - current_price) / current_price
         
-        # Create feature vector
+        # Feature vector
         feature = [
             data[i]['RSI'],
             data[i]['MACD'],
@@ -249,11 +230,11 @@ def prepare_features_and_target(data):
             data[i]['EMA_21']
         ]
         
-        # Create target (1 for price increase, -1 for decrease, 0 for no change)
-        if price_change > 0.005:  # 0.5% threshold for significant change
+        # Target labels
+        if price_change > 0.005:
             label = 1  # Buy
         elif price_change < -0.005:
-            label = -1  # Sell
+            label = -1 # Sell
         else:
             label = 0  # Hold
         
@@ -266,94 +247,65 @@ def prepare_features_and_target(data):
 
 def train_model(features, target):
     """
-    Train a machine learning model
-    
-    Args:
-        features (list): List of feature vectors
-        target (list): List of target values
-        
-    Returns:
-        object: Trained model
+    Train a machine learning model (simple decision tree).
     """
-    # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(
-        features, target, test_size=0.2, random_state=42
-    )
-    
-    # Create and train model
+    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
     model = SimpleDecisionTree(max_depth=3)
     model.fit(X_train, y_train)
     
-    # Evaluate model
+    # Evaluate
     y_pred = model.predict(X_test)
     accuracy = sum(1 for i in range(len(y_pred)) if y_pred[i] == y_test[i]) / len(y_pred)
-    
     print(f"Model trained with accuracy: {accuracy:.4f}")
-    
     return model
 
 def generate_signals_with_ml(data, model=None, use_sentiment=True):
     """
-    Generate trading signals using machine learning and sentiment analysis
-    
-    Args:
-        data (list): List of dictionaries with price and indicator data
-        model (object): Trained machine learning model
-        use_sentiment (bool): Whether to incorporate sentiment analysis
-        
-    Returns:
-        list: List of dictionaries with trading signals
+    Generate trading signals using ML and optional sentiment analysis.
     """
-    # Prepare features and target
     features, target, dates, prices = prepare_features_and_target(data)
     
-    # Train model if not provided
+    # Train if no model provided
     if model is None:
         model = train_model(features, target)
     
-    # Generate predictions
+    # Predict
     predictions = model.predict(features)
     probabilities = model.predict_proba(features)
     
-    # Create signals
+    # Build signals
     signals = []
     for i in range(len(predictions)):
-        signal = {
+        signals.append({
             'Date': dates[i],
             'Price': prices[i],
             'Signal': predictions[i],
             'Confidence': probabilities[i],
             'Sentiment_Used': False,
             'Sentiment_Score': 0.0
-        }
-        signals.append(signal)
+        })
     
-    # Incorporate sentiment analysis if requested
+    # Optionally integrate sentiment
     if use_sentiment and SentimentAnalyzer is not None:
         try:
-            # Initialize sentiment analyzer
             analyzer = SentimentAnalyzer()
-            
-            # Get sentiment data
-            sentiment_file = "../data/sentiment_analysis_latest.json"
+            sentiment_file = "data/sentiment_analysis_latest.json"
             sentiment_data = None
             
-            # Try to find the most recent sentiment analysis file
+            # Attempt to find a sentiment file
             if not os.path.exists(sentiment_file):
-                data_dir = "../data"
+                data_dir = "data"
                 sentiment_files = [f for f in os.listdir(data_dir) if f.startswith("sentiment_analysis_") and f.endswith(".json")]
                 if sentiment_files:
-                    # Sort by timestamp (newest first)
                     sentiment_files.sort(reverse=True)
                     sentiment_file = os.path.join(data_dir, sentiment_files[0])
             
-            # Load sentiment data if available
+            # Load or generate sentiment
             if os.path.exists(sentiment_file):
                 with open(sentiment_file, 'r') as f:
                     sentiment_data = json.load(f)
                 print(f"Loaded sentiment data from {sentiment_file}")
             else:
-                # Generate sentiment data if not available
                 print("No sentiment data found. Generating new sentiment analysis...")
                 news = analyzer.fetch_crude_oil_news()
                 sentiment_results = analyzer.analyze_news_sentiment(news)
@@ -364,7 +316,7 @@ def generate_signals_with_ml(data, model=None, use_sentiment=True):
                 }
                 print("Sentiment analysis generated.")
             
-            # Adjust signals based on sentiment
+            # Adjust signals if sentiment data is available
             if sentiment_data:
                 sentiment_score = sentiment_data["trading_signal"]["sentiment_score"]
                 sentiment_signal = sentiment_data["trading_signal"]["signal"]
@@ -372,29 +324,24 @@ def generate_signals_with_ml(data, model=None, use_sentiment=True):
                 
                 print(f"Incorporating sentiment analysis: Score={sentiment_score:.2f}, Signal={sentiment_signal}, Confidence={sentiment_confidence:.2f}")
                 
-                # Adjust the most recent signals (last 5 days) based on sentiment
+                # Modify the last 5 signals
                 for i in range(max(0, len(signals) - 5), len(signals)):
-                    # Get original signal
-                    original_signal = signals[i]['Signal']
-                    original_confidence = signals[i]['Confidence']
+                    orig_signal = signals[i]['Signal']
+                    orig_conf = signals[i]['Confidence']
                     
-                    # Adjust signal based on sentiment
-                    # If sentiment agrees with technical signal, boost confidence
-                    # If sentiment disagrees, reduce confidence or flip signal if sentiment is strong
-                    if (original_signal > 0 and sentiment_signal > 0) or (original_signal < 0 and sentiment_signal < 0):
-                        # Sentiment agrees with technical signal, boost confidence
-                        new_confidence = min(0.95, original_confidence + 0.1 * sentiment_confidence)
-                        signals[i]['Confidence'] = new_confidence
+                    if (orig_signal > 0 and sentiment_signal > 0) or (orig_signal < 0 and sentiment_signal < 0):
+                        # Sentiment agrees, boost confidence
+                        new_conf = min(0.95, orig_conf + 0.1 * sentiment_confidence)
+                        signals[i]['Confidence'] = new_conf
                     elif abs(sentiment_signal) > 0.7 and sentiment_confidence > 0.7:
-                        # Strong sentiment disagrees with technical signal, flip signal
+                        # Strongly disagree, flip
                         signals[i]['Signal'] = sentiment_signal
                         signals[i]['Confidence'] = sentiment_confidence
                     elif sentiment_signal != 0:
-                        # Sentiment disagrees but not strongly, reduce confidence
-                        new_confidence = max(0.5, original_confidence - 0.1 * sentiment_confidence)
-                        signals[i]['Confidence'] = new_confidence
+                        # Mild disagreement, reduce confidence
+                        new_conf = max(0.5, orig_conf - 0.1 * sentiment_confidence)
+                        signals[i]['Confidence'] = new_conf
                     
-                    # Mark as using sentiment
                     signals[i]['Sentiment_Used'] = True
                     signals[i]['Sentiment_Score'] = sentiment_score
         except Exception as e:
@@ -404,76 +351,75 @@ def generate_signals_with_ml(data, model=None, use_sentiment=True):
 
 def save_signals_to_csv(signals, filepath):
     """
-    Save trading signals to a CSV file
-    
-    Args:
-        signals (list): List of dictionaries with trading signals
-        filepath (str): Path to save the CSV file
-        
-    Returns:
-        bool: True if successful, False otherwise
+    Save trading signals to a CSV file.
     """
     try:
         with open(filepath, 'w', newline='') as f:
-            # Include all fields in the signals
             fieldnames = ['Date', 'Price', 'Signal', 'Confidence', 'Sentiment_Used', 'Sentiment_Score']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            
-            for signal in signals:
-                writer.writerow(signal)
-        
+            for s in signals:
+                writer.writerow(s)
         print(f"Trading signals saved to {filepath}")
         return True
     except Exception as e:
         print(f"Error saving signals to {filepath}: {e}")
         return False
 
+def save_signals_to_sqlite(signals, db_path, table_name="trading_signals"):
+    """
+    Save trading signals to an SQLite database.
+    """
+    try:
+        import pandas as pd
+        df_signals = pd.DataFrame(signals)
+        conn = sqlite3.connect(db_path)
+        df_signals.to_sql(table_name, conn, if_exists="replace", index=False)
+        conn.close()
+        print(f"Trading signals stored in SQLite database at {db_path} in table '{table_name}'")
+        return True
+    except Exception as e:
+        print(f"Error saving signals to SQLite: {e}")
+        return False
+
 def main():
-    """
-    Main function to generate trading signals using machine learning
-    """
     import argparse
-    
     parser = argparse.ArgumentParser(description='Generate trading signals using machine learning')
     parser.add_argument('--sentiment', action='store_true', help='Use sentiment analysis')
     parser.add_argument('--no-sentiment', dest='sentiment', action='store_false', help='Do not use sentiment analysis')
-    parser.add_argument('--output', type=str, default='../data/trading_signals_ml.csv', help='Output file path')
+    parser.add_argument('--output', type=str, default='data/trading_signals_ml.csv', help='Output CSV file path')
     parser.set_defaults(sentiment=True)
     args = parser.parse_args()
     
     print("WTI Crude Oil Trading System - ML Strategy")
     print("==========================================")
     
-    # Load data with indicators
-    data_path = "../data/crude_oil_with_indicators.csv"
-    data = load_data_with_indicators(data_path)
+    # Use the absolute path for the CSV with indicators
+    data_path = INDICATORS_DATA_PATH
     
+    data = load_data_with_indicators(data_path)
     if not data:
-        print("No data available. Please run indicators.py first.")
+        print("No data available. Please run indicators.py first (to generate the indicators CSV).")
         return
     
     print(f"Generating ML-based trading signals for {len(data)} records...")
     
-    # Generate signals using machine learning
     signals = generate_signals_with_ml(data, use_sentiment=args.sentiment)
-    
     if not signals:
         print("Failed to generate signals.")
         return
     
     print(f"Generated {len(signals)} trading signals.")
-    
-    # Print the last 5 signals
     print("\nLast 5 trading signals:")
-    for signal in signals[-5:]:
-        signal_type = "BUY" if signal['Signal'] == 1 else "SELL" if signal['Signal'] == -1 else "HOLD"
-        sentiment_info = f", Sentiment: {signal['Sentiment_Score']:.2f}" if signal['Sentiment_Used'] else ""
-        print(f"Date: {signal['Date']}, Price: ${signal['Price']:.2f}, Signal: {signal_type}, Confidence: {signal['Confidence']:.2f}{sentiment_info}")
+    for s in signals[-5:]:
+        s_type = "BUY" if s['Signal'] == 1 else "SELL" if s['Signal'] == -1 else "HOLD"
+        senti_info = f", Sentiment: {s['Sentiment_Score']:.2f}" if s['Sentiment_Used'] else ""
+        print(f"Date: {s['Date']}, Price: ${s['Price']:.2f}, Signal: {s_type}, Confidence: {s['Confidence']:.2f}{senti_info}")
     
-    # Save signals
     output_path = args.output
     save_signals_to_csv(signals, output_path)
+    # Also save signals to the database
+    save_signals_to_sqlite(signals, DB_PATH, table_name="trading_signals")
     
     print("\nML trading strategy execution complete!")
     print(f"Sentiment analysis: {'Enabled' if args.sentiment else 'Disabled'}")
