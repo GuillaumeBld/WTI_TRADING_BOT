@@ -5,4 +5,3 @@ from textblob import TextBlob
 class SentimentAnalyzer:
     def __init__(self):
         pass
-
