@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="data/Botpic.jpeg">
+  <source media="(prefers-color-scheme: light)" srcset="data/Botpic.jpeg">
+  <img alt="Shows a black Browser Use Logo in light color mode and a white one in dark color mode." src="./static/browser-use.png"  width="full">
+</picture>
+
 # Trading Bot - Detailed Overview
 
 This project is a complete, AI-enhanced trading system designed for analyzing WTI crude oil. It integrates multiple data sources—including market data from Yahoo Finance, news from NewsAPI, and satellite-derived alternative data—with advanced technical analysis, sentiment analysis (using DistilBERT/FinBERT), and dynamic risk management. The system is built in a modular, agent-based structure that supports both automated and semi-manual trade execution, backtesting, and performance optimization.
