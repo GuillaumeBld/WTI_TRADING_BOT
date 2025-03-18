@@ -1,0 +1,1 @@
+/Library/Developer/CommandLineTools/usr/bin/python3: can't open file '/Users/guillaumebolivard/Documents/School/Loyola_U/Classes/Capstone_MS_Finance/Trading_challenge/trading_bot/scripts/trading_agent.py': [Errno 1] Operation not permitted

@@ -1,0 +1,5 @@
+{
+    "trading_check_interval_seconds": 3600,
+    "alert_cooldown_seconds": 3600,
+    "alert_batch_window_seconds": 5
+}

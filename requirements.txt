@@ -1,0 +1,26 @@
+# Core dependencies
+numpy
+pandas
+scipy
+matplotlib
+seaborn
+scikit-learn
+
+# API clients
+newsapi-python
+yfinance
+requests
+
+# NLP and sentiment analysis
+torch
+transformers
+finbert
+schedule
+
+# Database and logging
+sqlite3
+logging
+
+# Other utilities
+argparse
+tqdm

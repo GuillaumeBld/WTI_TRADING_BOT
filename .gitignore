@@ -1,0 +1,15 @@
+# Ignore Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Ignore sensitive data (API keys, passwords)
+.env
+*.key
+*.credentials
+
+# Ignore large or temporary files
+*.log
+*.db  # Unless you want to version control market_data.db; adjust as needed
+data/market_data.db  # Optional: exclude database if you want to manage it separately
+data/news_archive.json  # Optional: exclude if you want to manage news data separately

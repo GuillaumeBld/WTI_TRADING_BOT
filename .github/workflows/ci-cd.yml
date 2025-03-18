@@ -1,0 +1,106 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov flake8
+        
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Test with pytest
+      run: |
+        pytest --cov=scripts
+        
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/wti-trading-bot:${{ github.ref == 'refs/heads/main' && 'latest' || 'dev' }}
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        
+    - name: Deploy to production
+      env:
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER }}
+        REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+      run: |
+        # Add host key to known hosts
+        mkdir -p ~/.ssh
+        ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+        
+        # Copy deployment files
+        rsync -avz --exclude 'venv' --exclude '.git' --exclude '__pycache__' \
+          --exclude 'data/*.csv' --exclude 'models/*.pkl' --exclude 'logs/*.log' \
+          ./ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/
+          
+        # Create .env file from secrets
+        echo "ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}" > .env
+        echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
+        echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+        echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+        scp .env $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/
+        
+        # Deploy using docker-compose
+        ssh $REMOTE_USER@$REMOTE_HOST "cd $REMOTE_DIR && docker-compose pull && docker-compose up -d"
+        
+    - name: Verify deployment
+      env:
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER }}
+        REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+      run: |
+        ssh $REMOTE_USER@$REMOTE_HOST "cd $REMOTE_DIR && docker-compose ps"
